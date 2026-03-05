@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="seq_food_order" model="ir.sequence">
+        <field name="name">Food Order</field>
+        <field name="code">food.order</field>
+        <field name="prefix">FO</field>
+        <field name="padding">5</field>
+        <field name="company_id" eval="False"/>
+    </record>
+
+    <record id="view_food_order_tree" model="ir.ui.view">
+        <field name="name">food.order.tree</field>
+        <field name="model">food.order</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+                <field name="customer_name"/>
+                <field name="total_amount"/>
+                <field name="payment_status"/>
+                <field name="payment_method"/>
+                <field name="state"/>
+                <field name="create_date"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_food_order_form" model="ir.ui.view">
+        <field name="name">food.order.form</field>
+        <field name="model">food.order</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <field name="state" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name" readonly="1"/>
+                            <field name="customer_name"/>
+                            <field name="customer_phone"/>
+                            <field name="customer_address"/>
+                            <field name="total_amount"/>
+                        </group>
+                        <group>
+                            <field name="payment_status"/>
+                            <field name="payment_method"/>
+                            <field name="payment_reference"/>
+                            <field name="paid_amount"/>
+                            <field name="paid_at"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Lineas">
+                            <field name="line_ids">
+                                <list editable="bottom">
+                                    <field name="product_name"/>
+                                    <field name="category"/>
+                                    <field name="quantity"/>
+                                    <field name="unit_price"/>
+                                    <field name="subtotal" readonly="1"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_food_orders" model="ir.actions.act_window">
+        <field name="name">Pedidos</field>
+        <field name="res_model">food.order</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem id="menu_food_orders_root" name="Food Shop" sequence="10"/>
+    <menuitem id="menu_food_orders" name="Pedidos" parent="menu_food_orders_root" action="action_food_orders" sequence="10"/>
+</odoo>
