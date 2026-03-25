@@ -16,9 +16,13 @@
             <list>
                 <field name="name"/>
                 <field name="customer_name"/>
+                <field name="order_type"/>
+                <field name="scheduled_slot"/>
+                <field name="item_count"/>
                 <field name="total_amount"/>
                 <field name="payment_status"/>
                 <field name="payment_method"/>
+                <field name="estimated_ready_minutes"/>
                 <field name="state"/>
                 <field name="create_date"/>
             </list>
@@ -40,15 +44,26 @@
                             <field name="customer_name"/>
                             <field name="customer_phone"/>
                             <field name="customer_address"/>
+                            <field name="order_type"/>
+                            <field name="scheduled_slot"/>
+                            <field name="is_priority"/>
                             <field name="total_amount"/>
+                            <field name="service_fee"/>
                         </group>
                         <group>
                             <field name="payment_status"/>
                             <field name="payment_method"/>
                             <field name="payment_reference"/>
+                            <field name="promo_code"/>
+                            <field name="priority_fee"/>
+                            <field name="discount_amount"/>
                             <field name="paid_amount"/>
                             <field name="paid_at"/>
+                            <field name="estimated_ready_minutes" readonly="1"/>
                         </group>
+                    </group>
+                    <group>
+                        <field name="customer_note" placeholder="Instrucciones especiales del cliente"/>
                     </group>
                     <notebook>
                         <page string="Lineas">
