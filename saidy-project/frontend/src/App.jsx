@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 const ODOO_VERSION_URL = "/odoo/web/webclient/version_info";
 const CREATE_ORDER_URL = "/odoo/food_orders/create";
 
+// Hola mudno
+
 const FOOD_ITEMS = [
   { id: 1, name: "Pizza Margarita", category: "Pizzas", price: 8.5, emoji: "🍕" },
   { id: 2, name: "Hamburguesa Clasica", category: "Burgers", price: 6.25, emoji: "🍔" },
