@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+<!-- Usando Odoo para el backend -->
     <record id="seq_food_order" model="ir.sequence">
         <field name="name">Food Order</field>
         <field name="code">food.order</field>
