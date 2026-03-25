@@ -1,72 +1,300 @@
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 
-const ODOO_VERSION_URL = "/odoo/web/webclient/version_info";
+const ODOO_VERSION_URL = "/odoo/food_orders/health";
 const CREATE_ORDER_URL = "/odoo/food_orders/create";
-
-// Hola mudno
+const DASHBOARD_URL = "/odoo/food_orders/dashboard";
+const LOGIN_URL = "/odoo/food_orders/login";
+const REGISTER_URL = "/odoo/food_orders/register";
+const LOGOUT_URL = "/odoo/food_orders/logout";
+const SESSION_STORAGE_KEY = "saidy-session";
 
 const FOOD_ITEMS = [
-  { id: 1, name: "Pizza Margarita", category: "Pizzas", price: 8.5, emoji: "🍕" },
-  { id: 2, name: "Hamburguesa Clasica", category: "Burgers", price: 6.25, emoji: "🍔" },
-  { id: 3, name: "Tacos de Pollo", category: "Tacos", price: 5.75, emoji: "🌮" },
-  { id: 4, name: "Ensalada Cesar", category: "Saludable", price: 4.9, emoji: "🥗" },
-  { id: 5, name: "Pasta Alfredo", category: "Pastas", price: 7.2, emoji: "🍝" },
-  { id: 6, name: "Limonada Natural", category: "Bebidas", price: 2.25, emoji: "🥤" }
+  { id: 1, name: "Pizza Margarita Signature", category: "Pizzas", price: 8.5, emoji: "🍕", rating: 4.9, prepTime: 18, tag: "Top ventas", description: "Mozzarella premium, salsa artesanal y albahaca fresca." },
+  { id: 2, name: "Hamburguesa Clasica Prime", category: "Burgers", price: 6.25, emoji: "🍔", rating: 4.8, prepTime: 14, tag: "Combo ideal", description: "Carne angus, cheddar, vegetales frescos y salsa de la casa." },
+  { id: 3, name: "Tacos de Pollo Crispy", category: "Tacos", price: 5.75, emoji: "🌮", rating: 4.7, prepTime: 11, tag: "Rapido", description: "Pollo crujiente, pico de gallo y crema de cilantro." },
+  { id: 4, name: "Ensalada Cesar Green", category: "Saludable", price: 4.9, emoji: "🥗", rating: 4.6, prepTime: 8, tag: "Ligero", description: "Lechuga fresca, crutones, parmesano y aderezo clasico." },
+  { id: 5, name: "Pasta Alfredo Cremosa", category: "Pastas", price: 7.2, emoji: "🍝", rating: 4.8, prepTime: 16, tag: "Chef choice", description: "Salsa cremosa, ajo salteado y parmesano importado." },
+  { id: 6, name: "Limonada Natural Spark", category: "Bebidas", price: 2.25, emoji: "🥤", rating: 4.5, prepTime: 4, tag: "Refrescante", description: "Limon natural, hierbabuena y hielo triturado." },
+  { id: 7, name: "Wrap Mediterraneo", category: "Saludable", price: 6.8, emoji: "🌯", rating: 4.7, prepTime: 10, tag: "Nuevo", description: "Pollo grill, hummus suave y vegetales crocantes." },
+  { id: 8, name: "Brownie Volcan", category: "Postres", price: 3.4, emoji: "🍫", rating: 4.9, prepTime: 6, tag: "Postre", description: "Chocolate intenso con centro suave y topping de nuez." }
 ];
 
 const PAYMENT_METHODS = [
-  { id: "cash", label: "Efectivo" },
-  { id: "card", label: "Tarjeta" },
-  { id: "transfer", label: "Transferencia" }
+  { id: "cash", label: "Efectivo", hint: "Pago al recibir" },
+  { id: "card", label: "Tarjeta", hint: "Debito o credito" },
+  { id: "transfer", label: "Transferencia", hint: "Pago con referencia" }
 ];
 
+const ORDER_TYPES = [
+  { id: "delivery", label: "Delivery", description: "Entrega en tu ubicacion", fee: 2.5 },
+  { id: "pickup", label: "Pickup", description: "Retiro sin costo", fee: 0 },
+  { id: "dine_in", label: "En local", description: "Preparado para mesa", fee: 0 }
+];
+
+const SCHEDULE_OPTIONS = [
+  { id: "asap", label: "Lo antes posible" },
+  { id: "15", label: "En 15 min" },
+  { id: "30", label: "En 30 min" },
+  { id: "45", label: "En 45 min" },
+  { id: "60", label: "En 60 min" }
+];
+
+const PROMO_CODES = {
+  BIENVENIDA: { discount: 0.12, label: "12% de descuento" },
+  LUNCH10: { discount: 0.1, label: "10% en pedidos agiles" },
+  SWEET15: { discount: 0.15, label: "15% en postres y antojos" }
+};
+
+const EMPTY_DASHBOARD = { metrics: { total_orders: 0, paid_orders: 0, revenue: 0, satisfaction: 96 }, recent_orders: [] };
+const AUTH_INITIAL = {
+  login: { email: "", password: "" },
+  register: { fullName: "", businessName: "", email: "", password: "", confirmPassword: "" }
+};
+
+function formatCurrency(value) {
+  return new Intl.NumberFormat("es-DO", { style: "currency", currency: "USD" }).format(value);
+}
+
 export default function App() {
+  const [authMode, setAuthMode] = useState("login");
+  const [authForm, setAuthForm] = useState(AUTH_INITIAL);
+  const [authStatus, setAuthStatus] = useState("");
+  const [session, setSession] = useState(null);
   const [versionInfo, setVersionInfo] = useState(null);
-  const [status, setStatus] = useState("Cargando conexion con Odoo...");
+  const [status, setStatus] = useState("Conectando con Odoo...");
   const [activeCategory, setActiveCategory] = useState("Todos");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortBy, setSortBy] = useState("featured");
   const [cart, setCart] = useState({});
+  const [favorites, setFavorites] = useState([]);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [paymentReference, setPaymentReference] = useState("");
+  const [orderType, setOrderType] = useState("delivery");
+  const [scheduledSlot, setScheduledSlot] = useState("asap");
+  const [customerNote, setCustomerNote] = useState("");
+  const [promoCode, setPromoCode] = useState("");
+  const [appliedPromo, setAppliedPromo] = useState("");
+  const [isPriority, setIsPriority] = useState(false);
   const [orderStatus, setOrderStatus] = useState("");
   const [isSavingOrder, setIsSavingOrder] = useState(false);
-
-  const categories = ["Todos", ...new Set(FOOD_ITEMS.map((item) => item.category))];
-  const visibleItems =
-    activeCategory === "Todos"
-      ? FOOD_ITEMS
-      : FOOD_ITEMS.filter((item) => item.category === activeCategory);
-
-  const cartItems = useMemo(() => FOOD_ITEMS.filter((item) => cart[item.id]), [cart]);
-  const total = useMemo(
-    () => cartItems.reduce((sum, item) => sum + item.price * cart[item.id], 0),
-    [cart, cartItems]
-  );
+  const [dashboard, setDashboard] = useState(EMPTY_DASHBOARD);
+  const [dbName, setDbName] = useState("");
+  const deferredSearch = useDeferredValue(searchTerm);
 
   useEffect(() => {
-    async function checkOdoo() {
+    const savedSession = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    const savedCart = window.localStorage.getItem("saidy-cart");
+    const savedFavorites = window.localStorage.getItem("saidy-favorites");
+    if (savedSession) setSession(JSON.parse(savedSession));
+    if (savedCart) setCart(JSON.parse(savedCart));
+    if (savedFavorites) setFavorites(JSON.parse(savedFavorites));
+  }, []);
+
+  useEffect(() => {
+    async function loadHealth() {
       try {
-        const response = await fetch(ODOO_VERSION_URL, { method: "POST" });
-
+        const response = await fetch(ODOO_VERSION_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", method: "call", params: {} })
+        });
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`);
+          return;
         }
-
         const payload = await response.json();
-        setVersionInfo(payload.result);
-        setStatus("Conexion exitosa con Odoo");
+        if (payload.result?.db) {
+          setDbName(payload.result.db);
+        }
+      } catch {
+        // Ignore bootstrap errors.
+      }
+    }
+
+    loadHealth();
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("saidy-cart", JSON.stringify(cart));
+  }, [cart]);
+
+  useEffect(() => {
+    window.localStorage.setItem("saidy-favorites", JSON.stringify(favorites));
+  }, [favorites]);
+
+  useEffect(() => {
+    if (!session) return;
+    async function loadOverview() {
+      try {
+        const [versionResult, dashboardResult] = await Promise.allSettled([
+          fetch(ODOO_VERSION_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", params: {} }) }),
+          fetch(DASHBOARD_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", params: {} }) })
+        ]);
+
+        let versionLoaded = false;
+        let dashboardLoaded = false;
+
+        if (versionResult.status === "fulfilled" && versionResult.value.ok) {
+          const versionPayload = await versionResult.value.json();
+          setVersionInfo(versionPayload.result || null);
+          if (versionPayload.result?.db) {
+            setDbName(versionPayload.result.db);
+          }
+          versionLoaded = true;
+        }
+        if (dashboardResult.status === "fulfilled" && dashboardResult.value.ok) {
+          const dashboardPayload = await dashboardResult.value.json();
+          setDashboard(dashboardPayload.result || EMPTY_DASHBOARD);
+          dashboardLoaded = true;
+        }
+        if (versionLoaded || dashboardLoaded) {
+          setStatus("Plataforma operativa y lista para recibir pedidos.");
+          return;
+        }
+        throw new Error("No se pudieron cargar los servicios del panel");
       } catch (error) {
         setStatus(`No se pudo conectar con Odoo: ${error.message}`);
       }
     }
+    loadOverview();
+  }, [session]);
 
-    checkOdoo();
-  }, []);
+  useEffect(() => {
+    if (session?.fullName) setCustomerName((current) => current || session.fullName);
+  }, [session]);
+
+  const categories = ["Todos", ...new Set(FOOD_ITEMS.map((item) => item.category))];
+  const visibleItems = useMemo(() => {
+    const normalizedSearch = deferredSearch.trim().toLowerCase();
+    const filtered = FOOD_ITEMS.filter((item) => {
+      const matchesCategory = activeCategory === "Todos" || item.category === activeCategory;
+      const matchesSearch = !normalizedSearch || item.name.toLowerCase().includes(normalizedSearch) || item.description.toLowerCase().includes(normalizedSearch) || item.tag.toLowerCase().includes(normalizedSearch);
+      return matchesCategory && matchesSearch;
+    });
+    const sorted = [...filtered];
+    if (sortBy === "price-asc") sorted.sort((a, b) => a.price - b.price);
+    else if (sortBy === "price-desc") sorted.sort((a, b) => b.price - a.price);
+    else if (sortBy === "rating") sorted.sort((a, b) => b.rating - a.rating);
+    else sorted.sort((a, b) => b.rating - a.rating || a.prepTime - b.prepTime);
+    return sorted;
+  }, [activeCategory, deferredSearch, sortBy]);
+
+  const featuredItems = useMemo(() => FOOD_ITEMS.slice().sort((a, b) => b.rating - a.rating).slice(0, 4), []);
+  const cartItems = useMemo(() => FOOD_ITEMS.filter((item) => cart[item.id]), [cart]);
+  const itemCount = useMemo(() => cartItems.reduce((sum, item) => sum + (cart[item.id] || 0), 0), [cart, cartItems]);
+  const subtotal = useMemo(() => cartItems.reduce((sum, item) => sum + item.price * cart[item.id], 0), [cart, cartItems]);
+  const selectedOrderConfig = ORDER_TYPES.find((option) => option.id === orderType) || ORDER_TYPES[0];
+  const serviceFee = subtotal > 0 ? selectedOrderConfig.fee : 0;
+  const priorityFee = isPriority && subtotal > 0 ? 1.75 : 0;
+  const promoData = PROMO_CODES[appliedPromo.toUpperCase()] || null;
+  const discountAmount = promoData ? subtotal * promoData.discount : 0;
+  const total = Math.max(subtotal + serviceFee + priorityFee - discountAmount, 0);
+  const etaMinutes = useMemo(() => {
+    const scheduleBoost = scheduledSlot === "asap" ? 0 : Number(scheduledSlot);
+    const orderBase = orderType === "pickup" ? 12 : orderType === "dine_in" ? 16 : 24;
+    return Math.max(orderBase + Math.max(itemCount - 2, 0) * 4 + (isPriority ? -4 : 0) + scheduleBoost, 10);
+  }, [itemCount, isPriority, orderType, scheduledSlot]);
+
+  function updateAuthForm(mode, field, value) {
+    setAuthForm((prev) => ({ ...prev, [mode]: { ...prev[mode], [field]: value } }));
+  }
+
+  async function handleRegister() {
+    const form = authForm.register;
+    if (!form.fullName.trim() || !form.businessName.trim() || !form.email.trim() || !form.password.trim()) {
+      setAuthStatus("Completa todos los campos para registrar tu cuenta.");
+      return;
+    }
+    if (form.password !== form.confirmPassword) {
+      setAuthStatus("La confirmacion de la contrasena no coincide.");
+      return;
+    }
+    try {
+      const response = await fetch(REGISTER_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "call",
+          params: {
+            full_name: form.fullName,
+            business_name: form.businessName,
+            email: form.email,
+            password: form.password,
+            confirm_password: form.confirmPassword,
+            db: dbName
+          }
+        })
+      });
+      const payload = await response.json();
+      if (!response.ok || payload.error) {
+        throw new Error(payload.error?.data?.message || `HTTP ${response.status}`);
+      }
+      const nextSession = {
+        fullName: payload.result.user.full_name,
+        businessName: payload.result.user.business_name,
+        email: payload.result.user.email
+      };
+      window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
+      setSession(nextSession);
+      setAuthStatus("");
+    } catch (error) {
+      setAuthStatus(`No se pudo registrar: ${error.message}`);
+    }
+  }
+
+  async function handleLogin() {
+    const form = authForm.login;
+    try {
+      const response = await fetch(LOGIN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "call",
+          params: {
+            email: form.email,
+            password: form.password,
+            db: dbName
+          }
+        })
+      });
+      const payload = await response.json();
+      if (!response.ok || payload.error) {
+        throw new Error(payload.error?.data?.message || `HTTP ${response.status}`);
+      }
+      const nextSession = {
+        fullName: payload.result.user.full_name,
+        businessName: payload.result.user.business_name,
+        email: payload.result.user.email
+      };
+      window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
+      setSession(nextSession);
+      setAuthStatus("");
+    } catch (error) {
+      setAuthStatus(`No se pudo iniciar sesion: ${error.message}`);
+    }
+  }
+
+  async function logout() {
+    try {
+      await fetch(LOGOUT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", method: "call", params: {} })
+      });
+    } finally {
+      window.localStorage.removeItem(SESSION_STORAGE_KEY);
+      setSession(null);
+      setOrderStatus("");
+    }
+  }
 
   function addToCart(itemId) {
     setCart((prev) => ({ ...prev, [itemId]: (prev[itemId] || 0) + 1 }));
+    setOrderStatus("");
   }
 
   function removeFromCart(itemId) {
@@ -80,25 +308,45 @@ export default function App() {
     });
   }
 
+  function toggleFavorite(itemId) {
+    setFavorites((prev) => (prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId]));
+  }
+
+  function applyPromoCode() {
+    const normalizedCode = promoCode.trim().toUpperCase();
+    if (!normalizedCode) {
+      setAppliedPromo("");
+      setOrderStatus("Escribe un codigo promocional para aplicarlo.");
+      return;
+    }
+    if (!PROMO_CODES[normalizedCode]) {
+      setAppliedPromo("");
+      setOrderStatus("Ese codigo no existe o ya no esta disponible.");
+      return;
+    }
+    setAppliedPromo(normalizedCode);
+    setOrderStatus(`Promocion aplicada: ${PROMO_CODES[normalizedCode].label}.`);
+  }
+
   async function submitOrder() {
     if (cartItems.length === 0) {
-      setOrderStatus("Agrega al menos un producto antes de pagar.");
+      setOrderStatus("Agrega al menos un producto antes de confirmar.");
       return;
     }
-
     if (!customerName.trim()) {
-      setOrderStatus("Debes escribir tu nombre.");
+      setOrderStatus("Debes escribir el nombre del cliente.");
       return;
     }
-
-    if (!paymentMethod) {
-      setOrderStatus("Selecciona un metodo de pago.");
+    if (orderType === "delivery" && !customerAddress.trim()) {
+      setOrderStatus("Para delivery necesitamos una direccion.");
       return;
     }
-
+    if ((paymentMethod === "card" || paymentMethod === "transfer") && !paymentReference.trim()) {
+      setOrderStatus("Agrega una referencia para el metodo seleccionado.");
+      return;
+    }
     setIsSavingOrder(true);
-    setOrderStatus("Procesando pago y pedido...");
-
+    setOrderStatus("Confirmando pedido y enviando a Odoo...");
     try {
       const response = await fetch(CREATE_ORDER_URL, {
         method: "POST",
@@ -110,160 +358,340 @@ export default function App() {
             customer_name: customerName,
             customer_phone: customerPhone,
             customer_address: customerAddress,
-            total_amount: total,
+            total_amount: Number(total.toFixed(2)),
             pay_now: true,
             payment_method: paymentMethod,
             payment_reference: paymentReference,
-            items: cartItems.map((item) => ({
-              product_name: item.name,
-              category: item.category,
-              quantity: cart[item.id],
-              unit_price: item.price
-            }))
+            order_type: orderType,
+            scheduled_slot: scheduledSlot,
+            customer_note: customerNote,
+            promo_code: appliedPromo,
+            is_priority: isPriority,
+            service_fee: Number(serviceFee.toFixed(2)),
+            priority_fee: Number(priorityFee.toFixed(2)),
+            discount_amount: Number(discountAmount.toFixed(2)),
+            items: cartItems.map((item) => ({ product_name: item.name, category: item.category, quantity: cart[item.id], unit_price: item.price }))
           }
         })
       });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json();
-      if (payload.error) {
-        throw new Error(payload.error.data?.message || "No se pudo procesar el pago");
-      }
-
-      setOrderStatus(
-        `Pago aprobado. Pedido ${payload.result.order_name} registrado como ${payload.result.payment_status}.`
-      );
+      if (payload.error) throw new Error(payload.error.data?.message || "No se pudo procesar el pedido");
+      setOrderStatus(`Pedido ${payload.result.order_name} confirmado. Tiempo estimado: ${payload.result.estimated_ready_minutes} min.`);
       setCart({});
-      setCustomerName("");
       setCustomerPhone("");
       setCustomerAddress("");
       setPaymentReference("");
+      setCustomerNote("");
+      setPromoCode("");
+      setAppliedPromo("");
       setPaymentMethod("cash");
+      setOrderType("delivery");
+      setScheduledSlot("asap");
+      setIsPriority(false);
+      const dashboardResponse = await fetch(DASHBOARD_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", params: {} }) });
+      if (dashboardResponse.ok) {
+        const dashboardPayload = await dashboardResponse.json();
+        setDashboard(dashboardPayload.result || EMPTY_DASHBOARD);
+      }
     } catch (error) {
-      setOrderStatus(`Error al pagar: ${error.message}`);
+      setOrderStatus(`Error al guardar el pedido: ${error.message}`);
     } finally {
       setIsSavingOrder(false);
     }
   }
 
+  if (!session) {
+    return (
+      <main className="auth-shell">
+        <section className="auth-brand">
+          <div className="brand-chip">Saidy Commerce Suite</div>
+          <h1>Una experiencia de pedidos con imagen corporativa y acceso profesional.</h1>
+          <p>Organiza el flujo comercial, presenta mejor tus productos y controla el pedido desde una interfaz más seria para una empresa real.</p>
+          <div className="brand-grid">
+            <article><strong>Operaciones claras</strong><span>Panel visual, orden en el checkout y lectura rápida del negocio.</span></article>
+            <article><strong>Acceso de clientes</strong><span>Login y registro integrados para una entrada más formal a la plataforma.</span></article>
+            <article><strong>Escalable</strong><span>Cuentas guardadas en Odoo y listas para ampliar el flujo del negocio.</span></article>
+          </div>
+        </section>
+        <section className="auth-panel">
+          <div className="auth-toggle">
+            <button className={authMode === "login" ? "auth-tab active" : "auth-tab"} onClick={() => setAuthMode("login")}>Login</button>
+            <button className={authMode === "register" ? "auth-tab active" : "auth-tab"} onClick={() => setAuthMode("register")}>Register</button>
+          </div>
+          {authMode === "login" ? (
+            <div className="auth-form">
+              <div>
+                <span className="section-kicker">Acceso</span>
+                <h2>Inicia sesion</h2>
+              </div>
+              <input className="order-input" type="email" placeholder="Correo corporativo" value={authForm.login.email} onChange={(event) => updateAuthForm("login", "email", event.target.value)} />
+              <input className="order-input" type="password" placeholder="Contrasena" value={authForm.login.password} onChange={(event) => updateAuthForm("login", "password", event.target.value)} />
+              <button className="submit-order" onClick={handleLogin}>Entrar al panel</button>
+            </div>
+          ) : (
+            <div className="auth-form">
+              <div>
+                <span className="section-kicker">Registro</span>
+                <h2>Crea tu cuenta</h2>
+              </div>
+              <input className="order-input" type="text" placeholder="Nombre completo" value={authForm.register.fullName} onChange={(event) => updateAuthForm("register", "fullName", event.target.value)} />
+              <input className="order-input" type="text" placeholder="Nombre del negocio" value={authForm.register.businessName} onChange={(event) => updateAuthForm("register", "businessName", event.target.value)} />
+              <input className="order-input" type="email" placeholder="Correo" value={authForm.register.email} onChange={(event) => updateAuthForm("register", "email", event.target.value)} />
+              <input className="order-input" type="password" placeholder="Contrasena" value={authForm.register.password} onChange={(event) => updateAuthForm("register", "password", event.target.value)} />
+              <input className="order-input" type="password" placeholder="Confirmar contrasena" value={authForm.register.confirmPassword} onChange={(event) => updateAuthForm("register", "confirmPassword", event.target.value)} />
+              <button className="submit-order" onClick={handleRegister}>Crear cuenta</button>
+            </div>
+          )}
+          {authStatus && <p className="auth-status">{authStatus}</p>}
+        </section>
+      </main>
+    );
+  }
+
   return (
-    <main className="container">
-      <header className="hero">
-        <h1>Tienda de Comida</h1>
-        <p>Ordena y paga desde React con backend en Odoo 18.</p>
+    <main className="app-shell">
+      <header className="topbar">
+        <div>
+          <span className="brand-chip">Saidy Commerce Suite</span>
+          <h2>{session.businessName || "Saidy Food Commerce"}</h2>
+        </div>
+        <div className="topbar-actions">
+          <div className="user-badge">
+            <strong>{session.fullName}</strong>
+            <span>{session.email}</span>
+          </div>
+          <button className="secondary-button" onClick={logout}>Cerrar sesion</button>
+        </div>
       </header>
 
-      <section className="status-card">
-        <p>{status}</p>
-        {versionInfo && <small>Odoo {versionInfo.server_version}</small>}
+      <section className="hero-panel corporate">
+        <div className="hero-copy">
+          <span className="eyebrow">Panel comercial</span>
+          <div className="hero-body">
+            <div className="hero-text">
+              <h1>Una experiencia de pedidos ordenada, vendible y lista para operar.</h1>
+              <p>Mejor estructura visual, indicadores claros y un flujo de compra más serio para presentar el negocio con confianza.</p>
+            </div>
+            <div className="hero-points">
+              <article><strong>Estado operativo</strong><span>{status}</span></article>
+              <article><strong>Version del sistema</strong><span>{versionInfo ? `Odoo ${versionInfo.server_version}` : "Pendiente"}</span></article>
+              <article><strong>Tiempo estimado</strong><span>{itemCount > 0 ? `${etaMinutes} minutos` : "Se calcula al crear un pedido"}</span></article>
+            </div>
+          </div>
+          <div className="hero-actions">
+            <div className="hero-search">
+              <input type="text" placeholder="Buscar productos, categorias o promos" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} />
+            </div>
+            <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+              <option value="featured">Destacados</option>
+              <option value="rating">Mejor valorados</option>
+              <option value="price-asc">Precio menor</option>
+              <option value="price-desc">Precio mayor</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="hero-card hero-stats">
+          <p className="status-title">Resumen ejecutivo</p>
+          <div className="stats-grid">
+            <article><strong>{dashboard.metrics.total_orders}</strong><span>Pedidos</span></article>
+            <article><strong>{formatCurrency(dashboard.metrics.revenue)}</strong><span>Ingresos</span></article>
+            <article><strong>{dashboard.metrics.paid_orders}</strong><span>Pagados</span></article>
+            <article><strong>{dashboard.metrics.satisfaction}%</strong><span>Satisfaccion</span></article>
+          </div>
+          <div className="eta-card">
+            <span>Pedido activo</span>
+            <strong>{itemCount} items en carrito</strong>
+            <p>Un checkout claro mejora la conversión y reduce errores operativos.</p>
+          </div>
+        </div>
       </section>
 
-      <section className="filters">
-        {categories.map((category) => (
-          <button
-            key={category}
-            className={category === activeCategory ? "filter active" : "filter"}
-            onClick={() => setActiveCategory(category)}
-          >
-            {category}
-          </button>
+      <section className="featured-strip">
+        {featuredItems.map((item) => (
+          <article key={item.id} className="featured-card">
+            <div>
+              <span className="featured-badge">{item.tag}</span>
+              <h3>{item.name}</h3>
+              <p>{item.description}</p>
+            </div>
+            <div className="featured-meta">
+              <span>{item.emoji}</span>
+              <strong>{formatCurrency(item.price)}</strong>
+            </div>
+          </article>
         ))}
       </section>
 
-      <section className="content">
-        <div className="menu-grid">
-          {visibleItems.map((item) => (
-            <article key={item.id} className="item-card">
-              <span className="emoji" aria-hidden="true">
-                {item.emoji}
-              </span>
-              <h2>{item.name}</h2>
-              <p>{item.category}</p>
-              <div className="item-footer">
-                <strong>US${item.price.toFixed(2)}</strong>
-                <button onClick={() => addToCart(item.id)}>Agregar</button>
-              </div>
-            </article>
+      <section className="catalog-toolbar">
+        <div className="filters">
+          {categories.map((category) => (
+            <button key={category} className={category === activeCategory ? "filter active" : "filter"} onClick={() => setActiveCategory(category)}>
+              {category}
+            </button>
           ))}
         </div>
+        <div className="promo-banner">
+          <span>Promociones disponibles</span>
+          <strong>BIENVENIDA, LUNCH10, SWEET15</strong>
+        </div>
+      </section>
 
-        <aside className="cart">
-          <h3>Carrito</h3>
-          {cartItems.length === 0 && <p className="empty">Aun no agregas productos.</p>}
-
-          {cartItems.map((item) => (
-            <div key={item.id} className="cart-row">
-              <div>
-                <p>{item.name}</p>
-                <small>
-                  {cart[item.id]} x US${item.price.toFixed(2)}
-                </small>
-              </div>
-              <button className="remove" onClick={() => removeFromCart(item.id)}>
-                Quitar
-              </button>
+      <section className="layout-grid">
+        <div className="catalog-column">
+          <div className="section-heading">
+            <div>
+              <span className="section-kicker">Catalogo</span>
+              <h2>Productos organizados para una compra más clara</h2>
             </div>
-          ))}
-
-          <div className="total">
-            <span>Total</span>
-            <strong>US${total.toFixed(2)}</strong>
+            <span>{visibleItems.length} resultados</span>
           </div>
 
-          <input
-            className="order-input"
-            type="text"
-            placeholder="Tu nombre"
-            value={customerName}
-            onChange={(event) => setCustomerName(event.target.value)}
-          />
-          <input
-            className="order-input"
-            type="text"
-            placeholder="Telefono (opcional)"
-            value={customerPhone}
-            onChange={(event) => setCustomerPhone(event.target.value)}
-          />
-          <textarea
-            className="order-input"
-            placeholder="Direccion de entrega (opcional)"
-            rows="3"
-            value={customerAddress}
-            onChange={(event) => setCustomerAddress(event.target.value)}
-          />
+          <div className="menu-grid">
+            {visibleItems.map((item) => {
+              const isFavorite = favorites.includes(item.id);
+              return (
+                <article key={item.id} className="item-card">
+                  <button className={isFavorite ? "favorite active" : "favorite"} onClick={() => toggleFavorite(item.id)} aria-label="Marcar favorito">
+                    {isFavorite ? "★" : "☆"}
+                  </button>
+                  <div className="item-topline">
+                    <span className="emoji" aria-hidden="true">{item.emoji}</span>
+                    <span className="item-tag">{item.tag}</span>
+                  </div>
+                  <h3>{item.name}</h3>
+                  <p>{item.description}</p>
+                  <div className="item-insights">
+                    <span>{item.category}</span>
+                    <span>{item.rating} rating</span>
+                    <span>{item.prepTime} min</span>
+                  </div>
+                  <div className="item-footer">
+                    <strong>{formatCurrency(item.price)}</strong>
+                    <button onClick={() => addToCart(item.id)}>Agregar</button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+        <aside className="checkout-column">
+          <section className="checkout-card">
+            <div className="section-heading compact">
+              <div>
+                <span className="section-kicker">Checkout</span>
+                <h2>Confirma el pedido</h2>
+              </div>
+            </div>
 
-          <div className="payment-box">
-            <p className="payment-title">Metodo de pago</p>
-            <div className="payment-methods">
-              {PAYMENT_METHODS.map((method) => (
-                <label key={method.id} className="payment-option">
-                  <input
-                    type="radio"
-                    name="payment-method"
-                    value={method.id}
-                    checked={paymentMethod === method.id}
-                    onChange={(event) => setPaymentMethod(event.target.value)}
-                  />
-                  {method.label}
-                </label>
+            <div className="segmented-grid">
+              {ORDER_TYPES.map((option) => (
+                <button key={option.id} className={option.id === orderType ? "mode-card active" : "mode-card"} onClick={() => setOrderType(option.id)}>
+                  <strong>{option.label}</strong>
+                  <span>{option.description}</span>
+                </button>
               ))}
             </div>
-            <input
-              className="order-input"
-              type="text"
-              placeholder="Referencia de pago (opcional)"
-              value={paymentReference}
-              onChange={(event) => setPaymentReference(event.target.value)}
-            />
-          </div>
 
-          <button className="submit-order" onClick={submitOrder} disabled={isSavingOrder}>
-            {isSavingOrder ? "Procesando pago..." : "Pagar y realizar pedido"}
-          </button>
-          {orderStatus && <p className="order-status">{orderStatus}</p>}
+            <div className="form-grid">
+              <input className="order-input" type="text" placeholder="Nombre del cliente" value={customerName} onChange={(event) => setCustomerName(event.target.value)} />
+              <input className="order-input" type="text" placeholder="Telefono" value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} />
+              <input className="order-input" type="text" placeholder={orderType === "delivery" ? "Direccion de entrega" : "Referencia o ubicacion"} value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} />
+              <select className="order-input" value={scheduledSlot} onChange={(event) => setScheduledSlot(event.target.value)}>
+                {SCHEDULE_OPTIONS.map((slot) => (
+                  <option key={slot.id} value={slot.id}>{slot.label}</option>
+                ))}
+              </select>
+              <textarea className="order-input order-note" placeholder="Notas de cocina o instrucciones especiales" rows="3" value={customerNote} onChange={(event) => setCustomerNote(event.target.value)} />
+            </div>
+
+            <div className="priority-box">
+              <label className="priority-toggle">
+                <input type="checkbox" checked={isPriority} onChange={(event) => setIsPriority(event.target.checked)} />
+                <span>Preparacion prioritaria</span>
+              </label>
+              <small>Mejora la urgencia operativa y reduce el tiempo estimado.</small>
+            </div>
+
+            <div className="payment-box">
+              <p className="payment-title">Metodo de pago</p>
+              <div className="payment-methods">
+                {PAYMENT_METHODS.map((method) => (
+                  <label key={method.id} className={paymentMethod === method.id ? "payment-option active" : "payment-option"}>
+                    <input type="radio" name="payment-method" value={method.id} checked={paymentMethod === method.id} onChange={(event) => setPaymentMethod(event.target.value)} />
+                    <div>
+                      <strong>{method.label}</strong>
+                      <span>{method.hint}</span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              <input className="order-input" type="text" placeholder="Referencia de pago" value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} />
+            </div>
+
+            <div className="promo-box">
+              <input className="order-input" type="text" placeholder="Codigo promocional" value={promoCode} onChange={(event) => setPromoCode(event.target.value)} />
+              <button className="secondary-button" onClick={applyPromoCode}>Aplicar</button>
+            </div>
+
+            <div className="cart-list">
+              {cartItems.length === 0 && <p className="empty">Todavia no agregas productos.</p>}
+              {cartItems.map((item) => (
+                <div key={item.id} className="cart-row">
+                  <div>
+                    <p>{item.name}</p>
+                    <small>{cart[item.id]} x {formatCurrency(item.price)}</small>
+                  </div>
+                  <button className="remove" onClick={() => removeFromCart(item.id)}>Quitar</button>
+                </div>
+              ))}
+            </div>
+
+            <div className="summary-box">
+              <div><span>Subtotal</span><strong>{formatCurrency(subtotal)}</strong></div>
+              <div><span>Servicio</span><strong>{formatCurrency(serviceFee)}</strong></div>
+              <div><span>Prioridad</span><strong>{formatCurrency(priorityFee)}</strong></div>
+              <div><span>Descuento</span><strong>-{formatCurrency(discountAmount)}</strong></div>
+              <div className="grand-total"><span>Total</span><strong>{formatCurrency(total)}</strong></div>
+            </div>
+
+            <button className="submit-order" onClick={submitOrder} disabled={isSavingOrder}>
+              {isSavingOrder ? "Procesando pedido..." : "Registrar pedido"}
+            </button>
+            {orderStatus && <p className="order-status">{orderStatus}</p>}
+          </section>
+
+          <section className="insights-card">
+            <div className="section-heading compact">
+              <div>
+                <span className="section-kicker">Actividad</span>
+                <h2>Ultimos movimientos</h2>
+              </div>
+            </div>
+
+            <div className="insight-metrics">
+              <article><strong>{favorites.length}</strong><span>Favoritos</span></article>
+              <article><strong>{itemCount}</strong><span>En carrito</span></article>
+              <article><strong>{etaMinutes}</strong><span>Min estimados</span></article>
+            </div>
+
+            <div className="recent-list">
+              {dashboard.recent_orders.length === 0 && <p className="empty">Aun no hay pedidos recientes en el panel.</p>}
+              {dashboard.recent_orders.map((order) => (
+                <article key={order.name} className="recent-order">
+                  <div>
+                    <strong>{order.name}</strong>
+                    <p>{order.customer_name}</p>
+                  </div>
+                  <div>
+                    <span>{order.order_type}</span>
+                    <strong>{formatCurrency(order.total_amount)}</strong>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
         </aside>
       </section>
     </main>

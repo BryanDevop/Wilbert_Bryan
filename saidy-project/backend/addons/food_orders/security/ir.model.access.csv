@@ -1,3 +1,4 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_food_order_user,food.order user,model_food_order,base.group_user,1,1,1,1
 access_food_order_line_user,food.order.line user,model_food_order_line,base.group_user,1,1,1,1
+access_food_customer_account_user,food.customer.account user,model_food_customer_account,base.group_user,1,1,1,1
