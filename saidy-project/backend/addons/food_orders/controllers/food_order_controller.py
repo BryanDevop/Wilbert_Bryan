@@ -119,6 +119,28 @@ class FoodOrderController(http.Controller):
             ],
         }
 
+    @http.route("/food_orders/products", type="json", auth="public", methods=["POST"], csrf=False)
+    def food_orders_products(self, **kwargs):
+        products = request.env["food.product"].sudo().search(
+            [("active", "=", True), ("is_available", "=", True)], order="sequence asc, name asc"
+        )
+        return {
+            "products": [
+                {
+                    "id": product.id,
+                    "name": product.name,
+                    "category": product.category,
+                    "price": product.price,
+                    "emoji": product.emoji or "🍽️",
+                    "rating": product.rating or 0,
+                    "prepTime": product.prep_time or 0,
+                    "tag": product.tag or "Disponible",
+                    "description": product.description or "",
+                }
+                for product in products
+            ]
+        }
+
     @http.route("/food_orders/create", type="json", auth="public", methods=["POST"], csrf=False)
     def create_food_order(self, **kwargs):
         params = kwargs or request.jsonrequest or {}

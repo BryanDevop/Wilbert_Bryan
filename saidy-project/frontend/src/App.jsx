@@ -6,9 +6,12 @@ const DASHBOARD_URL = "/odoo/food_orders/dashboard";
 const LOGIN_URL = "/odoo/food_orders/login";
 const REGISTER_URL = "/odoo/food_orders/register";
 const LOGOUT_URL = "/odoo/food_orders/logout";
+const PRODUCT_LIST_URL = "/odoo/food_orders/products";
 const SESSION_STORAGE_KEY = "saidy-session";
+const CART_STORAGE_KEY = "saidy-cart";
+const FAVORITES_STORAGE_KEY = "saidy-favorites";
 
-const FOOD_ITEMS = [
+const DEFAULT_FOOD_ITEMS = [
   { id: 1, name: "Pizza Margarita Signature", category: "Pizzas", price: 8.5, emoji: "🍕", rating: 4.9, prepTime: 18, tag: "Top ventas", description: "Mozzarella premium, salsa artesanal y albahaca fresca." },
   { id: 2, name: "Hamburguesa Clasica Prime", category: "Burgers", price: 6.25, emoji: "🍔", rating: 4.8, prepTime: 14, tag: "Combo ideal", description: "Carne angus, cheddar, vegetales frescos y salsa de la casa." },
   { id: 3, name: "Tacos de Pollo Crispy", category: "Tacos", price: 5.75, emoji: "🌮", rating: 4.7, prepTime: 11, tag: "Rapido", description: "Pollo crujiente, pico de gallo y crema de cilantro." },
@@ -55,13 +58,41 @@ function formatCurrency(value) {
   return new Intl.NumberFormat("es-DO", { style: "currency", currency: "USD" }).format(value);
 }
 
+function safeReadStorage(key, fallback) {
+  try {
+    const storedValue = window.localStorage.getItem(key);
+    return storedValue ? JSON.parse(storedValue) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function getErrorMessage(error, fallbackMessage) {
+  return error instanceof Error && error.message ? error.message : fallbackMessage;
+}
+
+async function postJsonRpc(url, params = {}) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", method: "call", params })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.error) {
+    throw new Error(payload.error?.data?.message || `HTTP ${response.status}`);
+  }
+  return payload.result;
+}
+
 export default function App() {
   const [authMode, setAuthMode] = useState("login");
   const [authForm, setAuthForm] = useState(AUTH_INITIAL);
   const [authStatus, setAuthStatus] = useState("");
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [session, setSession] = useState(null);
   const [versionInfo, setVersionInfo] = useState(null);
   const [status, setStatus] = useState("Conectando con Odoo...");
+  const [products, setProducts] = useState(DEFAULT_FOOD_ITEMS);
   const [activeCategory, setActiveCategory] = useState("Todos");
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("featured");
@@ -85,28 +116,17 @@ export default function App() {
   const deferredSearch = useDeferredValue(searchTerm);
 
   useEffect(() => {
-    const savedSession = window.localStorage.getItem(SESSION_STORAGE_KEY);
-    const savedCart = window.localStorage.getItem("saidy-cart");
-    const savedFavorites = window.localStorage.getItem("saidy-favorites");
-    if (savedSession) setSession(JSON.parse(savedSession));
-    if (savedCart) setCart(JSON.parse(savedCart));
-    if (savedFavorites) setFavorites(JSON.parse(savedFavorites));
+    setSession(safeReadStorage(SESSION_STORAGE_KEY, null));
+    setCart(safeReadStorage(CART_STORAGE_KEY, {}));
+    setFavorites(safeReadStorage(FAVORITES_STORAGE_KEY, []));
   }, []);
 
   useEffect(() => {
     async function loadHealth() {
       try {
-        const response = await fetch(ODOO_VERSION_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", method: "call", params: {} })
-        });
-        if (!response.ok) {
-          return;
-        }
-        const payload = await response.json();
-        if (payload.result?.db) {
-          setDbName(payload.result.db);
+        const result = await postJsonRpc(ODOO_VERSION_URL);
+        if (result?.db) {
+          setDbName(result.db);
         }
       } catch {
         // Ignore bootstrap errors.
@@ -117,39 +137,47 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem("saidy-cart", JSON.stringify(cart));
+    window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
   }, [cart]);
 
   useEffect(() => {
-    window.localStorage.setItem("saidy-favorites", JSON.stringify(favorites));
+    window.localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(favorites));
   }, [favorites]);
+
+  useEffect(() => {
+    setAuthStatus("");
+  }, [authMode]);
 
   useEffect(() => {
     if (!session) return;
     async function loadOverview() {
       try {
-        const [versionResult, dashboardResult] = await Promise.allSettled([
-          fetch(ODOO_VERSION_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", params: {} }) }),
-          fetch(DASHBOARD_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", params: {} }) })
+        const [versionResult, dashboardResult, productResult] = await Promise.allSettled([
+          postJsonRpc(ODOO_VERSION_URL),
+          postJsonRpc(DASHBOARD_URL),
+          postJsonRpc(PRODUCT_LIST_URL)
         ]);
 
         let versionLoaded = false;
         let dashboardLoaded = false;
+        let productsLoaded = false;
 
-        if (versionResult.status === "fulfilled" && versionResult.value.ok) {
-          const versionPayload = await versionResult.value.json();
-          setVersionInfo(versionPayload.result || null);
-          if (versionPayload.result?.db) {
-            setDbName(versionPayload.result.db);
+        if (versionResult.status === "fulfilled") {
+          setVersionInfo(versionResult.value || null);
+          if (versionResult.value?.db) {
+            setDbName(versionResult.value.db);
           }
           versionLoaded = true;
         }
-        if (dashboardResult.status === "fulfilled" && dashboardResult.value.ok) {
-          const dashboardPayload = await dashboardResult.value.json();
-          setDashboard(dashboardPayload.result || EMPTY_DASHBOARD);
+        if (dashboardResult.status === "fulfilled") {
+          setDashboard(dashboardResult.value || EMPTY_DASHBOARD);
           dashboardLoaded = true;
         }
-        if (versionLoaded || dashboardLoaded) {
+        if (productResult.status === "fulfilled" && Array.isArray(productResult.value?.products)) {
+          setProducts(productResult.value.products);
+          productsLoaded = true;
+        }
+        if (versionLoaded || dashboardLoaded || productsLoaded) {
           setStatus("Plataforma operativa y lista para recibir pedidos.");
           return;
         }
@@ -165,10 +193,22 @@ export default function App() {
     if (session?.fullName) setCustomerName((current) => current || session.fullName);
   }, [session]);
 
-  const categories = ["Todos", ...new Set(FOOD_ITEMS.map((item) => item.category))];
+  useEffect(() => {
+    const validIds = new Set(products.map((item) => item.id));
+    setCart((current) => Object.fromEntries(Object.entries(current).filter(([id]) => validIds.has(Number(id)))));
+    setFavorites((current) => current.filter((id) => validIds.has(id)));
+  }, [products]);
+
+  useEffect(() => {
+    if (activeCategory !== "Todos" && !products.some((item) => item.category === activeCategory)) {
+      setActiveCategory("Todos");
+    }
+  }, [activeCategory, products]);
+
+  const categories = ["Todos", ...new Set(products.map((item) => item.category))];
   const visibleItems = useMemo(() => {
     const normalizedSearch = deferredSearch.trim().toLowerCase();
-    const filtered = FOOD_ITEMS.filter((item) => {
+    const filtered = products.filter((item) => {
       const matchesCategory = activeCategory === "Todos" || item.category === activeCategory;
       const matchesSearch = !normalizedSearch || item.name.toLowerCase().includes(normalizedSearch) || item.description.toLowerCase().includes(normalizedSearch) || item.tag.toLowerCase().includes(normalizedSearch);
       return matchesCategory && matchesSearch;
@@ -179,10 +219,10 @@ export default function App() {
     else if (sortBy === "rating") sorted.sort((a, b) => b.rating - a.rating);
     else sorted.sort((a, b) => b.rating - a.rating || a.prepTime - b.prepTime);
     return sorted;
-  }, [activeCategory, deferredSearch, sortBy]);
+  }, [activeCategory, deferredSearch, products, sortBy]);
 
-  const featuredItems = useMemo(() => FOOD_ITEMS.slice().sort((a, b) => b.rating - a.rating).slice(0, 4), []);
-  const cartItems = useMemo(() => FOOD_ITEMS.filter((item) => cart[item.id]), [cart]);
+  const featuredItems = useMemo(() => products.slice().sort((a, b) => b.rating - a.rating).slice(0, 4), [products]);
+  const cartItems = useMemo(() => products.filter((item) => cart[item.id]), [cart, products]);
   const itemCount = useMemo(() => cartItems.reduce((sum, item) => sum + (cart[item.id] || 0), 0), [cart, cartItems]);
   const subtotal = useMemo(() => cartItems.reduce((sum, item) => sum + item.price * cart[item.id], 0), [cart, cartItems]);
   const selectedOrderConfig = ORDER_TYPES.find((option) => option.id === orderType) || ORDER_TYPES[0];
@@ -196,8 +236,20 @@ export default function App() {
     const orderBase = orderType === "pickup" ? 12 : orderType === "dine_in" ? 16 : 24;
     return Math.max(orderBase + Math.max(itemCount - 2, 0) * 4 + (isPriority ? -4 : 0) + scheduleBoost, 10);
   }, [itemCount, isPriority, orderType, scheduledSlot]);
+  const requiresPaymentReference = paymentMethod === "card" || paymentMethod === "transfer";
+  const hasInvalidPromo = promoCode.trim() && !PROMO_CODES[promoCode.trim().toUpperCase()];
+  const isOrderReady =
+    cartItems.length > 0 &&
+    customerName.trim() &&
+    (orderType !== "delivery" || customerAddress.trim()) &&
+    (!requiresPaymentReference || paymentReference.trim());
+  const orderStatusTone = orderStatus.toLowerCase().startsWith("error") ? "error" : "success";
+  const authStatusTone = authStatus.toLowerCase().includes("no se pudo") || authStatus.toLowerCase().includes("completa") || authStatus.toLowerCase().includes("no coincide")
+    ? "error"
+    : "success";
 
   function updateAuthForm(mode, field, value) {
+    setAuthStatus("");
     setAuthForm((prev) => ({ ...prev, [mode]: { ...prev[mode], [field]: value } }));
   }
 
@@ -211,80 +263,63 @@ export default function App() {
       setAuthStatus("La confirmacion de la contrasena no coincide.");
       return;
     }
+    setIsAuthenticating(true);
     try {
-      const response = await fetch(REGISTER_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          method: "call",
-          params: {
-            full_name: form.fullName,
-            business_name: form.businessName,
-            email: form.email,
-            password: form.password,
-            confirm_password: form.confirmPassword,
-            db: dbName
-          }
-        })
+      const result = await postJsonRpc(REGISTER_URL, {
+        full_name: form.fullName,
+        business_name: form.businessName,
+        email: form.email,
+        password: form.password,
+        confirm_password: form.confirmPassword,
+        db: dbName
       });
-      const payload = await response.json();
-      if (!response.ok || payload.error) {
-        throw new Error(payload.error?.data?.message || `HTTP ${response.status}`);
-      }
       const nextSession = {
-        fullName: payload.result.user.full_name,
-        businessName: payload.result.user.business_name,
-        email: payload.result.user.email
+        fullName: result.user.full_name,
+        businessName: result.user.business_name,
+        email: result.user.email
       };
       window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
       setSession(nextSession);
+      setAuthForm(AUTH_INITIAL);
       setAuthStatus("");
     } catch (error) {
-      setAuthStatus(`No se pudo registrar: ${error.message}`);
+      setAuthStatus(`No se pudo registrar: ${getErrorMessage(error, "Error desconocido")}`);
+    } finally {
+      setIsAuthenticating(false);
     }
   }
 
   async function handleLogin() {
     const form = authForm.login;
+    if (!form.email.trim() || !form.password.trim()) {
+      setAuthStatus("Debes indicar correo y contrasena.");
+      return;
+    }
+    setIsAuthenticating(true);
     try {
-      const response = await fetch(LOGIN_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          method: "call",
-          params: {
-            email: form.email,
-            password: form.password,
-            db: dbName
-          }
-        })
+      const result = await postJsonRpc(LOGIN_URL, {
+        email: form.email,
+        password: form.password,
+        db: dbName
       });
-      const payload = await response.json();
-      if (!response.ok || payload.error) {
-        throw new Error(payload.error?.data?.message || `HTTP ${response.status}`);
-      }
       const nextSession = {
-        fullName: payload.result.user.full_name,
-        businessName: payload.result.user.business_name,
-        email: payload.result.user.email
+        fullName: result.user.full_name,
+        businessName: result.user.business_name,
+        email: result.user.email
       };
       window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSession));
       setSession(nextSession);
       setAuthStatus("");
     } catch (error) {
-      setAuthStatus(`No se pudo iniciar sesion: ${error.message}`);
+      setAuthStatus(`No se pudo iniciar sesion: ${getErrorMessage(error, "Error desconocido")}`);
+    } finally {
+      setIsAuthenticating(false);
     }
   }
 
   async function logout() {
     try {
-      await fetch(LOGOUT_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jsonrpc: "2.0", method: "call", params: {} })
-      });
+      await postJsonRpc(LOGOUT_URL);
     } finally {
       window.localStorage.removeItem(SESSION_STORAGE_KEY);
       setSession(null);
@@ -348,36 +383,25 @@ export default function App() {
     setIsSavingOrder(true);
     setOrderStatus("Confirmando pedido y enviando a Odoo...");
     try {
-      const response = await fetch(CREATE_ORDER_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          method: "call",
-          params: {
-            customer_name: customerName,
-            customer_phone: customerPhone,
-            customer_address: customerAddress,
-            total_amount: Number(total.toFixed(2)),
-            pay_now: true,
-            payment_method: paymentMethod,
-            payment_reference: paymentReference,
-            order_type: orderType,
-            scheduled_slot: scheduledSlot,
-            customer_note: customerNote,
-            promo_code: appliedPromo,
-            is_priority: isPriority,
-            service_fee: Number(serviceFee.toFixed(2)),
-            priority_fee: Number(priorityFee.toFixed(2)),
-            discount_amount: Number(discountAmount.toFixed(2)),
-            items: cartItems.map((item) => ({ product_name: item.name, category: item.category, quantity: cart[item.id], unit_price: item.price }))
-          }
-        })
+      const result = await postJsonRpc(CREATE_ORDER_URL, {
+        customer_name: customerName,
+        customer_phone: customerPhone,
+        customer_address: customerAddress,
+        total_amount: Number(total.toFixed(2)),
+        pay_now: true,
+        payment_method: paymentMethod,
+        payment_reference: paymentReference,
+        order_type: orderType,
+        scheduled_slot: scheduledSlot,
+        customer_note: customerNote,
+        promo_code: appliedPromo,
+        is_priority: isPriority,
+        service_fee: Number(serviceFee.toFixed(2)),
+        priority_fee: Number(priorityFee.toFixed(2)),
+        discount_amount: Number(discountAmount.toFixed(2)),
+        items: cartItems.map((item) => ({ product_name: item.name, category: item.category, quantity: cart[item.id], unit_price: item.price }))
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const payload = await response.json();
-      if (payload.error) throw new Error(payload.error.data?.message || "No se pudo procesar el pedido");
-      setOrderStatus(`Pedido ${payload.result.order_name} confirmado. Tiempo estimado: ${payload.result.estimated_ready_minutes} min.`);
+      setOrderStatus(`Pedido ${result.order_name} confirmado. Tiempo estimado: ${result.estimated_ready_minutes} min.`);
       setCart({});
       setCustomerPhone("");
       setCustomerAddress("");
@@ -389,13 +413,9 @@ export default function App() {
       setOrderType("delivery");
       setScheduledSlot("asap");
       setIsPriority(false);
-      const dashboardResponse = await fetch(DASHBOARD_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "call", params: {} }) });
-      if (dashboardResponse.ok) {
-        const dashboardPayload = await dashboardResponse.json();
-        setDashboard(dashboardPayload.result || EMPTY_DASHBOARD);
-      }
+      setDashboard((await postJsonRpc(DASHBOARD_URL)) || EMPTY_DASHBOARD);
     } catch (error) {
-      setOrderStatus(`Error al guardar el pedido: ${error.message}`);
+      setOrderStatus(`Error al guardar el pedido: ${getErrorMessage(error, "Error desconocido")}`);
     } finally {
       setIsSavingOrder(false);
     }
@@ -427,7 +447,7 @@ export default function App() {
               </div>
               <input className="order-input" type="email" placeholder="Correo corporativo" value={authForm.login.email} onChange={(event) => updateAuthForm("login", "email", event.target.value)} />
               <input className="order-input" type="password" placeholder="Contrasena" value={authForm.login.password} onChange={(event) => updateAuthForm("login", "password", event.target.value)} />
-              <button className="submit-order" onClick={handleLogin}>Entrar al panel</button>
+              <button className="submit-order" onClick={handleLogin} disabled={isAuthenticating}>{isAuthenticating ? "Validando..." : "Entrar al panel"}</button>
             </div>
           ) : (
             <div className="auth-form">
@@ -440,10 +460,10 @@ export default function App() {
               <input className="order-input" type="email" placeholder="Correo" value={authForm.register.email} onChange={(event) => updateAuthForm("register", "email", event.target.value)} />
               <input className="order-input" type="password" placeholder="Contrasena" value={authForm.register.password} onChange={(event) => updateAuthForm("register", "password", event.target.value)} />
               <input className="order-input" type="password" placeholder="Confirmar contrasena" value={authForm.register.confirmPassword} onChange={(event) => updateAuthForm("register", "confirmPassword", event.target.value)} />
-              <button className="submit-order" onClick={handleRegister}>Crear cuenta</button>
+              <button className="submit-order" onClick={handleRegister} disabled={isAuthenticating}>{isAuthenticating ? "Creando cuenta..." : "Crear cuenta"}</button>
             </div>
           )}
-          {authStatus && <p className="auth-status">{authStatus}</p>}
+          {authStatus && <p className={`auth-status ${authStatusTone}`}>{authStatus}</p>}
         </section>
       </main>
     );
@@ -534,7 +554,7 @@ export default function App() {
         </div>
         <div className="promo-banner">
           <span>Promociones disponibles</span>
-          <strong>BIENVENIDA, LUNCH10, SWEET15</strong>
+          <strong>{appliedPromo ? `${appliedPromo}: ${PROMO_CODES[appliedPromo].label}` : "BIENVENIDA, LUNCH10, SWEET15"}</strong>
         </div>
       </section>
 
@@ -549,6 +569,12 @@ export default function App() {
           </div>
 
           <div className="menu-grid">
+            {visibleItems.length === 0 && (
+              <article className="empty-state">
+                <strong>No encontramos productos con ese filtro.</strong>
+                <p>Prueba otra categoria, limpia la busqueda o revisa las promociones disponibles.</p>
+              </article>
+            )}
             {visibleItems.map((item) => {
               const isFavorite = favorites.includes(item.id);
               return (
@@ -627,13 +653,18 @@ export default function App() {
                   </label>
                 ))}
               </div>
-              <input className="order-input" type="text" placeholder="Referencia de pago" value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} />
+              {requiresPaymentReference ? (
+                <input className="order-input" type="text" placeholder="Referencia de pago" value={paymentReference} onChange={(event) => setPaymentReference(event.target.value)} />
+              ) : (
+                <p className="payment-hint">No necesitas referencia adicional para pagos en efectivo.</p>
+              )}
             </div>
 
             <div className="promo-box">
               <input className="order-input" type="text" placeholder="Codigo promocional" value={promoCode} onChange={(event) => setPromoCode(event.target.value)} />
               <button className="secondary-button" onClick={applyPromoCode}>Aplicar</button>
             </div>
+            {hasInvalidPromo && <p className="inline-hint warning">Ese codigo no esta en la lista de promociones activas.</p>}
 
             <div className="cart-list">
               {cartItems.length === 0 && <p className="empty">Todavia no agregas productos.</p>}
@@ -656,10 +687,11 @@ export default function App() {
               <div className="grand-total"><span>Total</span><strong>{formatCurrency(total)}</strong></div>
             </div>
 
-            <button className="submit-order" onClick={submitOrder} disabled={isSavingOrder}>
+            <button className="submit-order" onClick={submitOrder} disabled={isSavingOrder || !isOrderReady}>
               {isSavingOrder ? "Procesando pedido..." : "Registrar pedido"}
             </button>
-            {orderStatus && <p className="order-status">{orderStatus}</p>}
+            {!isOrderReady && !isSavingOrder && <p className="inline-hint">Completa los datos obligatorios para habilitar el pedido.</p>}
+            {orderStatus && <p className={`order-status ${orderStatusTone}`}>{orderStatus}</p>}
           </section>
 
           <section className="insights-card">

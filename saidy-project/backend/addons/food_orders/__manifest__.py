@@ -8,7 +8,8 @@
     "depends": ["base"],
     "data": [
         "security/ir.model.access.csv",
-        "views/food_order_views.xml"
+        "views/food_order_views.xml",
+        "views/food_product_views.xml"
     ],
     "installable": True,
     "application": True
