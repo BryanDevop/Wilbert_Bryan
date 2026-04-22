@@ -103,6 +103,37 @@ input:focus, textarea:focus, select:focus {
   font-size: 0.9rem;
 }
 
+.auth-status,
+.order-status,
+.inline-hint,
+.payment-hint {
+  border-radius: 6px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  background: var(--border-light);
+}
+
+.auth-status.error,
+.order-status.error,
+.inline-hint.warning {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.25);
+}
+
+.auth-status.success,
+.order-status.success {
+  color: #166534;
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.inline-hint,
+.payment-hint {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
 .brand-grid {
   margin-top: 24px;
   display: grid;
@@ -459,6 +490,21 @@ input:focus, textarea:focus, select:focus {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 12px;
+}
+
+.empty-state {
+  grid-column: 1 / -1;
+  padding: 20px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: white;
+  display: grid;
+  gap: 6px;
+}
+
+.empty-state strong {
+  color: var(--text-primary);
+  font-size: 0.95rem;
 }
 
 .item-card {

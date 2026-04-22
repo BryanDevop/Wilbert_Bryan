@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_food_product_list" model="ir.ui.view">
+        <field name="name">food.product.list</field>
+        <field name="model">food.product</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="sequence"/>
+                <field name="name"/>
+                <field name="category"/>
+                <field name="price"/>
+                <field name="prep_time"/>
+                <field name="rating"/>
+                <field name="tag"/>
+                <field name="is_available"/>
+                <field name="active"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_food_product_form" model="ir.ui.view">
+        <field name="name">food.product.form</field>
+        <field name="model">food.product</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="sequence"/>
+                            <field name="name"/>
+                            <field name="category"/>
+                            <field name="price"/>
+                            <field name="prep_time"/>
+                        </group>
+                        <group>
+                            <field name="rating"/>
+                            <field name="tag"/>
+                            <field name="emoji"/>
+                            <field name="is_available"/>
+                            <field name="active"/>
+                        </group>
+                    </group>
+                    <group>
+                        <field name="description" placeholder="Describe el producto para el catalogo"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_food_products" model="ir.actions.act_window">
+        <field name="name">Productos</field>
+        <field name="res_model">food.product</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem
+        id="menu_food_products"
+        name="Productos"
+        parent="menu_food_orders_root"
+        action="action_food_products"
+        sequence="5"
+    />
+
+    <data noupdate="1">
+        <record id="food_product_demo_1" model="food.product">
+            <field name="sequence">10</field>
+            <field name="name">Pizza Margarita Signature</field>
+            <field name="category">Pizzas</field>
+            <field name="description">Mozzarella premium, salsa artesanal y albahaca fresca.</field>
+            <field name="price">8.5</field>
+            <field name="emoji">🍕</field>
+            <field name="rating">4.9</field>
+            <field name="prep_time">18</field>
+            <field name="tag">Top ventas</field>
+            <field name="is_available">True</field>
+        </record>
+        <record id="food_product_demo_2" model="food.product">
+            <field name="sequence">20</field>
+            <field name="name">Hamburguesa Clasica Prime</field>
+            <field name="category">Burgers</field>
+            <field name="description">Carne angus, cheddar, vegetales frescos y salsa de la casa.</field>
+            <field name="price">6.25</field>
+            <field name="emoji">🍔</field>
+            <field name="rating">4.8</field>
+            <field name="prep_time">14</field>
+            <field name="tag">Combo ideal</field>
+            <field name="is_available">True</field>
+        </record>
+        <record id="food_product_demo_3" model="food.product">
+            <field name="sequence">30</field>
+            <field name="name">Tacos de Pollo Crispy</field>
+            <field name="category">Tacos</field>
+            <field name="description">Pollo crujiente, pico de gallo y crema de cilantro.</field>
+            <field name="price">5.75</field>
+            <field name="emoji">🌮</field>
+            <field name="rating">4.7</field>
+            <field name="prep_time">11</field>
+            <field name="tag">Rapido</field>
+            <field name="is_available">True</field>
+        </record>
+        <record id="food_product_demo_4" model="food.product">
+            <field name="sequence">40</field>
+            <field name="name">Ensalada Cesar Green</field>
+            <field name="category">Saludable</field>
+            <field name="description">Lechuga fresca, crutones, parmesano y aderezo clasico.</field>
+            <field name="price">4.9</field>
+            <field name="emoji">🥗</field>
+            <field name="rating">4.6</field>
+            <field name="prep_time">8</field>
+            <field name="tag">Ligero</field>
+            <field name="is_available">True</field>
+        </record>
+        <record id="food_product_demo_5" model="food.product">
+            <field name="sequence">50</field>
+            <field name="name">Pasta Alfredo Cremosa</field>
+            <field name="category">Pastas</field>
+            <field name="description">Salsa cremosa, ajo salteado y parmesano importado.</field>
+            <field name="price">7.2</field>
+            <field name="emoji">🍝</field>
+            <field name="rating">4.8</field>
+            <field name="prep_time">16</field>
+            <field name="tag">Chef choice</field>
+            <field name="is_available">True</field>
+        </record>
+        <record id="food_product_demo_6" model="food.product">
+            <field name="sequence">60</field>
+            <field name="name">Limonada Natural Spark</field>
+            <field name="category">Bebidas</field>
+            <field name="description">Limon natural, hierbabuena y hielo triturado.</field>
+            <field name="price">2.25</field>
+            <field name="emoji">🥤</field>
+            <field name="rating">4.5</field>
+            <field name="prep_time">4</field>
+            <field name="tag">Refrescante</field>
+            <field name="is_available">True</field>
+        </record>
+        <record id="food_product_demo_7" model="food.product">
+            <field name="sequence">70</field>
+            <field name="name">Wrap Mediterraneo</field>
+            <field name="category">Saludable</field>
+            <field name="description">Pollo grill, hummus suave y vegetales crocantes.</field>
+            <field name="price">6.8</field>
+            <field name="emoji">🌯</field>
+            <field name="rating">4.7</field>
+            <field name="prep_time">10</field>
+            <field name="tag">Nuevo</field>
+            <field name="is_available">True</field>
+        </record>
+        <record id="food_product_demo_8" model="food.product">
+            <field name="sequence">80</field>
+            <field name="name">Brownie Volcan</field>
+            <field name="category">Postres</field>
+            <field name="description">Chocolate intenso con centro suave y topping de nuez.</field>
+            <field name="price">3.4</field>
+            <field name="emoji">🍫</field>
+            <field name="rating">4.9</field>
+            <field name="prep_time">6</field>
+            <field name="tag">Postre</field>
+            <field name="is_available">True</field>
+        </record>
+    </data>
+</odoo>
